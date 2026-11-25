@@ -1,7 +1,7 @@
 @echo off
 rem ============================================================
 rem  Delta Force - Map auto-download switch (single-file portable)
-rem  Version 2.0
+rem  Version 2.0.1
 rem
 rem  What it does:
 rem    Blocks the game download components (TinyDL.exe / TinyDL64.exe /
@@ -16,7 +16,7 @@ rem      1 = block auto download       2 = allow / restore
 rem      3 = show status / scan result 0 = quit
 rem
 rem  This .bat carries the real PowerShell code as base64 below,
-rem  unpacks it to %TEMP%\DF-MapDL and deletes it after the run.
+rem  unpacks it to %TEMP%\DF-MapDL, runs it, then deletes it.
 rem
 rem  Generated from the DeltaForce-MapDownload.ps1 in the source
 rem  folder - do not edit the base64 by hand; rerun the generator
@@ -25,20 +25,9 @@ rem ============================================================
 setlocal EnableExtensions
 title DF-MapDL
 set "SELFBAT=%~f0"
+set "DFARGS=%*"
 
-fltmc >nul 2>&1
-if errorlevel 1 (
-    echo Requesting administrator rights ...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Start-Process -FilePath '%~f0' -Verb RunAs -ErrorAction Stop } catch { exit 1 }" >nul 2>&1
-    if errorlevel 1 (
-        echo.
-        echo [!] Could not get administrator rights.
-        echo     Right-click this file and choose "Run as administrator".
-        pause
-    )
-    exit /b
-)
-
+rem ---- step 1: unpack the embedded PowerShell script (no admin needed) ----
 set "TMPDIR=%TEMP%\DF-MapDL"
 if not exist "%TMPDIR%" md "%TMPDIR%" >nul 2>&1
 set "TMPPS=%TMPDIR%\payload.ps1"
@@ -51,12 +40,29 @@ if errorlevel 1 (
     exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%TMPPS%" %*
+rem ---- step 2: get administrator rights ----
+rem  Relaunch the SIGNED powershell.exe, not this .bat. Elevating an
+rem  unsigned .bat makes Windows show an extra "publisher could not be
+rem  verified" file-open warning before the UAC prompt; elevating
+rem  powershell.exe shows the UAC prompt only.
+fltmc >nul 2>&1
+if errorlevel 1 (
+    echo Requesting administrator rights ...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $a=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$env:TMPPS); if($env:DFARGS){ $a += @($env:DFARGS -split ' ' | Where-Object { $_ }) }; Start-Process -FilePath 'powershell.exe' -ArgumentList $a -Verb RunAs -ErrorAction Stop } catch { Remove-Item -LiteralPath $env:TMPPS -Force -ErrorAction SilentlyContinue; exit 1 }" >nul 2>&1
+    if errorlevel 1 (
+        echo.
+        echo [!] Could not get administrator rights.
+        echo     Right-click this file and choose "Run as administrator".
+        pause
+    )
+    exit /b
+)
 
+powershell -NoProfile -ExecutionPolicy Bypass -File "%TMPPS%" %*
+set "RC=%ERRORLEVEL%"
 del /f /q "%TMPPS%" >nul 2>&1
-echo.
-pause
-exit /b 0
+rd /q "%TMPDIR%" >nul 2>&1
+exit /b %RC%
 
 rem #==PS_BEGIN==
 77u/I1JlcXVpcmVzIC1WZXJzaW9uIDUuMQo8IwogICAg5LiJ6KeS5rSy6KGM5YqoIMK3IOWcsOWb
@@ -324,6 +330,21 @@ IyAtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t
 LS0tLS0tLS0tIOWFpeWPowoKc3dpdGNoICgkTW9kZSkgewogICAgJ21lbnUnICAgeyBTaG93LU1l
 bnUgfQogICAgJ29mZicgICAgeyBJbnZva2UtQmxvY2sgICB8IE91dC1OdWxsIH0KICAgICdvbicg
 ICAgIHsgSW52b2tlLVVuYmxvY2sgfCBPdXQtTnVsbCB9CiAgICAnc3RhdHVzJyB7IFNob3ctU3Rh
-dHVzIH0KfQo=
+dHVzIH0KfQoKIyDlkb3ku6TooYzmqKHlvI/vvIhvZmYgLyBvbiAvIHN0YXR1c++8ieiHquW3sei3
+keWujOWwsei/lOWbnu+8jOWPjOWHu+aXtueql+WPo+S8muS4gOmXquiAjOi/h++8jAojIOaJgOS7
+peWBnOS4gOS4i++8m+iPnOWNleaooeW8j+acrOadpeWwseWcqOW+queOr+mHjOetieeUqOaIt+aM
+iemUru+8jOS4jeeUqOWGjeWKoOOAggppZiAoJE1vZGUgLW5lICdtZW51JyAtYW5kIC1ub3QgW0Nv
+bnNvbGVdOjpJc0lucHV0UmVkaXJlY3RlZCkgewogICAgV3JpdGUtSG9zdCAnJwogICAgUmVhZC1I
+b3N0ICcgIOaMieWbnui9pumUruWFs+mXreeql+WPoycgfCBPdXQtTnVsbAp9CgojIOWNleaWh+S7
+tueJiO+8muiEmuacrOacrOS9k+aYr+i/kOihjOaXtuino+WMheWIsCAlVEVNUCVcREYtTWFwREwg
+5LiL55qE77yM5o+Q5p2D5ZCO55Sx54i26L+b56iLCiMg5pS25LiN5LqG5bC+77yM5omA5Lul6L+Z
+6YeM6Ieq5bex5oqK5Li05pe25paH5Lu25Yig5o6J44CC55u05o6l6LeR5rqQ56CB55uu5b2V6YeM
+55qEIHBzMSDml7bot6/lvoTlr7nkuI3kuIrvvIwKIyDoh6rnhLbot7Pov4fvvIzkuI3kvJror6/l
+iKDmupDnoIHjgIIKJHRlbXBSb290ID0gSm9pbi1QYXRoICRlbnY6VEVNUCAnREYtTWFwREwnCmlm
+ICgkUFNDb21tYW5kUGF0aCAtYW5kICRQU0NvbW1hbmRQYXRoLlN0YXJ0c1dpdGgoJHRlbXBSb290
+LCBbU3RyaW5nQ29tcGFyaXNvbl06Ok9yZGluYWxJZ25vcmVDYXNlKSkgewogICAgUmVtb3ZlLUl0
+ZW0gLUxpdGVyYWxQYXRoICRQU0NvbW1hbmRQYXRoIC1Gb3JjZSAtRXJyb3JBY3Rpb24gU2lsZW50
+bHlDb250aW51ZQogICAgUmVtb3ZlLUl0ZW0gLUxpdGVyYWxQYXRoICR0ZW1wUm9vdCAtUmVjdXJz
+ZSAtRm9yY2UgLUVycm9yQWN0aW9uIFNpbGVudGx5Q29udGludWUKfQo=
 
 #==PS_END==

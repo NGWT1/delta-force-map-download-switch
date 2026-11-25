@@ -353,3 +353,19 @@ switch ($Mode) {
     'on'     { Invoke-Unblock | Out-Null }
     'status' { Show-Status }
 }
+
+# 命令行模式（off / on / status）自己跑完就返回，双击时窗口会一闪而过，
+# 所以停一下；菜单模式本来就在循环里等用户按键，不用再加。
+if ($Mode -ne 'menu' -and -not [Console]::IsInputRedirected) {
+    Write-Host ''
+    Read-Host '  按回车键关闭窗口' | Out-Null
+}
+
+# 单文件版：脚本本体是运行时解包到 %TEMP%\DF-MapDL 下的，提权后由父进程
+# 收不了尾，所以这里自己把临时文件删掉。直接跑源码目录里的 ps1 时路径对不上，
+# 自然跳过，不会误删源码。
+$tempRoot = Join-Path $env:TEMP 'DF-MapDL'
+if ($PSCommandPath -and $PSCommandPath.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+}

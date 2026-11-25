@@ -29,8 +29,8 @@ A single-file portable `.bat` that blocks Delta Force (国服/腾讯启动器版
 
 ## 快速开始
 
-1. 到 [Releases](../../releases) 下载 `delta-force-map-download-switch-2.0.bat`（**单文件，就是全部**）；
-2. 双击它 → 弹出 UAC 点「是」（建防火墙规则必须要管理员权限）；
+1. 到 [Releases](../../releases) 下载 `delta-force-map-download-switch-2.0.1.bat`（**单文件，就是全部**）；
+2. 双击它 → 只弹一次 UAC，点「是」（建防火墙规则必须要管理员权限）；
 3. 菜单选 `1` 禁止下载，选 `3` 看状态，选 `2` 恢复。
 
 界面长这样：
@@ -88,6 +88,7 @@ A single-file portable `.bat` that blocks Delta Force (国服/腾讯启动器版
 
 - 单文件版 = 一个纯文本 `.bat`，里面那段乱码是 base64 编码的 PowerShell 脚本原文，不是加壳的二进制；
 - 运行时它把 base64 解回脚本，临时存到 `%TEMP%\DF-MapDL\payload.ps1`，执行完**立刻删除**；
+- 提权时申请的是微软签名的 `powershell.exe`，不是这个 bat 本身——所以全程只弹一次 UAC（直接提权未签名 bat 会多弹一个「无法验证发布者」的警告）；
 - 不联网、不写注册表、不装服务、不驻留后台、不碰游戏文件、不注入进程；
 - 想审计：用任意 base64 解码器把两段 `#==PS_BEGIN==` / `#==PS_END==` 之间的内容解出来，逐行看。
 

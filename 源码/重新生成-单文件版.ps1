@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 #  重新生成「三角洲地图下载开关-单文件版.bat」
 #
 #  用法：改完同目录的 DeltaForce-MapDownload.ps1 之后，
@@ -32,7 +32,7 @@ $header = @'
 @echo off
 rem ============================================================
 rem  Delta Force - Map auto-download switch (single-file portable)
-rem  Version 2.0
+rem  Version 2.0.1
 rem
 rem  What it does:
 rem    Blocks the game download components (TinyDL.exe / TinyDL64.exe /
@@ -47,7 +47,7 @@ rem      1 = block auto download       2 = allow / restore
 rem      3 = show status / scan result 0 = quit
 rem
 rem  This .bat carries the real PowerShell code as base64 below,
-rem  unpacks it to %TEMP%\DF-MapDL and deletes it after the run.
+rem  unpacks it to %TEMP%\DF-MapDL, runs it, then deletes it.
 rem
 rem  Generated from the DeltaForce-MapDownload.ps1 in the source
 rem  folder - do not edit the base64 by hand; rerun the generator
@@ -56,20 +56,9 @@ rem ============================================================
 setlocal EnableExtensions
 title DF-MapDL
 set "SELFBAT=%~f0"
+set "DFARGS=%*"
 
-fltmc >nul 2>&1
-if errorlevel 1 (
-    echo Requesting administrator rights ...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Start-Process -FilePath '%~f0' -Verb RunAs -ErrorAction Stop } catch { exit 1 }" >nul 2>&1
-    if errorlevel 1 (
-        echo.
-        echo [!] Could not get administrator rights.
-        echo     Right-click this file and choose "Run as administrator".
-        pause
-    )
-    exit /b
-)
-
+rem ---- step 1: unpack the embedded PowerShell script (no admin needed) ----
 set "TMPDIR=%TEMP%\DF-MapDL"
 if not exist "%TMPDIR%" md "%TMPDIR%" >nul 2>&1
 set "TMPPS=%TMPDIR%\payload.ps1"
@@ -82,16 +71,36 @@ if errorlevel 1 (
     exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%TMPPS%" %*
+rem ---- step 2: get administrator rights ----
+rem  Relaunch the SIGNED powershell.exe, not this .bat. Elevating an
+rem  unsigned .bat makes Windows show an extra "publisher could not be
+rem  verified" file-open warning before the UAC prompt; elevating
+rem  powershell.exe shows the UAC prompt only.
+fltmc >nul 2>&1
+if errorlevel 1 (
+    echo Requesting administrator rights ...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $a=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$env:TMPPS); if($env:DFARGS){ $a += @($env:DFARGS -split ' ' | Where-Object { $_ }) }; Start-Process -FilePath 'powershell.exe' -ArgumentList $a -Verb RunAs -ErrorAction Stop } catch { Remove-Item -LiteralPath $env:TMPPS -Force -ErrorAction SilentlyContinue; exit 1 }" >nul 2>&1
+    if errorlevel 1 (
+        echo.
+        echo [!] Could not get administrator rights.
+        echo     Right-click this file and choose "Run as administrator".
+        pause
+    )
+    exit /b
+)
 
+powershell -NoProfile -ExecutionPolicy Bypass -File "%TMPPS%" %*
+set "RC=%ERRORLEVEL%"
 del /f /q "%TMPPS%" >nul 2>&1
-echo.
-pause
-exit /b 0
+rd /q "%TMPDIR%" >nul 2>&1
+exit /b %RC%
 
 rem #==PS_BEGIN==
 
 '@
+
+# 统一成 CRLF：cmd 对只用 LF 换行的脚本在某些 if (...) 块里会出错
+$header = ($header -replace "`r`n", "`n") -replace "`n", "`r`n"
 
 $footer = "`r`n#==PS_END==`r`n"
 $content = $header + ($lines -join "`r`n") + "`r`n" + $footer
@@ -103,5 +112,5 @@ Write-Host '已生成：'
 Write-Host "  $out"
 Write-Host "  大小 $size 字节，纯 ASCII，可单文件分享。"
 Write-Host ''
-Write-Host '双击它即可使用（会请求管理员权限）。'
+Write-Host '双击它即可使用（只会弹一次 UAC 提权窗口）。'
 Write-Host ''
