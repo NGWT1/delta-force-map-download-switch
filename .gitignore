@@ -1,0 +1,4 @@
+# local test scratch files
+_t*.bat
+_test*.bat
+*.log

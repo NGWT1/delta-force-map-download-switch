@@ -1,0 +1,7 @@
+# Windows scripts must keep CRLF line endings - the single-file .bat is a
+# self-extracting batch file and its payload must survive a checkout intact.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.txt text eol=crlf
+*.md  text eol=lf
