@@ -71,59 +71,75 @@ function Get-DownloaderPaths {
         if (-not $found.Contains($full)) { [void]$found.Add($full) }
     }
 
-    $roots   = New-Object System.Collections.Generic.List[string]
-    $drives  = @(Get-PSDrive -PSProvider FileSystem | Where-Object { $null -ne $_.Free })
+    $drives = @(Get-PSDrive -PSProvider FileSystem | Where-Object { $null -ne $_.Free })
+    $roots  = New-Object System.Collections.Generic.List[string]
 
+    # ---- 第一层：已知的相对路径，几乎零耗时，覆盖绝大多数国服安装结构 ----
+    $relPaths = @(
+        'Delta Force\launcher\TinyDL.exe'
+        'Delta Force\launcher\WeGameLauncher\TenioDL\TenioDL.exe'
+        'Delta Force\Delta Force\WeGameLauncher\tinydl\TinyDL.exe'
+        'DeltaForce\launcher\TinyDL.exe'
+        'Delta Force\TinyDL.exe'
+        'WeGameApps\Delta Force\launcher\TinyDL.exe'
+    )
     foreach ($drv in $drives) {
-        # 1) 磁盘根目录下名字可疑的文件夹（游戏本体目录 / 平台目录）
-        Get-ChildItem -LiteralPath $drv.Root -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -match 'Delta|三角洲|WeGame|Tencent|腾讯|Game' } |
-            ForEach-Object { [void]$roots.Add($_.FullName) }
+        foreach ($rel in $relPaths) { & $add (Join-Path $drv.Root $rel) }
+    }
 
-        # 2) 常见的国服启动器目录结构
-        foreach ($rel in @('Delta Force\launcher', 'Delta Force\Delta Force\WeGameLauncher')) {
-            $p = Join-Path $drv.Root $rel
-            if (Test-Path -LiteralPath $p) { [void]$roots.Add($p) }
+    # 由命中路径反推游戏根目录（盘符 + 第一级目录），后面只扫这些目录，
+    # 不去碰 C:\XboxGames 这类名字像游戏、实际无关的大目录
+    foreach ($hit in @($found)) {
+        $parts = $hit.Split('\')
+        if ($parts.Count -ge 3) {
+            $root = $parts[0] + '\' + $parts[1]
+            if (-not $roots.Contains($root)) { [void]$roots.Add($root) }
         }
     }
 
-    # 3) 注册表里登记的安装目录
-    $regRoots = @(
-        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
-        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
-    )
-    foreach ($key in $regRoots) {
-        Get-ItemProperty -Path $key -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -match '三角洲|Delta\s*Force' } |
-            ForEach-Object {
-                $cands = @()
-                if ($_.InstallLocation) { $cands += $_.InstallLocation }
-                if ($_.DisplayIcon) {
-                    $icon = ($_.DisplayIcon -replace ',\s*\d+\s*$', '').Trim('"')
-                    if ($icon) { $cands += (Split-Path -Parent $icon) }
+    # ---- 第二层：注册表里登记的安装目录 ----
+    if ($roots.Count -eq 0) {
+        $regRoots = @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        )
+        foreach ($key in $regRoots) {
+            Get-ItemProperty -Path $key -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -match '三角洲|Delta\s*Force' } |
+                ForEach-Object {
+                    $cands = @()
+                    if ($_.InstallLocation) { $cands += $_.InstallLocation }
+                    if ($_.DisplayIcon) {
+                        $icon = ($_.DisplayIcon -replace ',\s*\d+\s*$', '').Trim('"')
+                        if ($icon) { $cands += (Split-Path -Parent $icon) }
+                    }
+                    foreach ($c in $cands) {
+                        if ($c -and (Test-Path -LiteralPath $c) -and -not $roots.Contains($c)) { [void]$roots.Add($c) }
+                    }
                 }
-                foreach ($c in $cands) {
-                    if ($c -and (Test-Path -LiteralPath $c)) { [void]$roots.Add($c) }
-                }
-            }
+        }
     }
 
-    # 在候选根目录里按文件名找，几份拷贝都能找到
-    $script:DetectedRoots = @($roots | Sort-Object -Unique | Where-Object { Test-Path -LiteralPath $_ })
-    foreach ($root in $script:DetectedRoots) {
-        if (-not (Test-Path -LiteralPath $root)) { continue }
-        Get-ChildItem -LiteralPath $root -Recurse -Depth 8 -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Extension -eq '.exe' -and $_.Name -match $DownloaderPattern } |
-            ForEach-Object { & $add $_.FullName }
+    # ---- 第三层：还是没定位到，才扫磁盘根目录下名字可疑的文件夹 ----
+    if ($roots.Count -eq 0) {
+        foreach ($drv in $drives) {
+            Get-ChildItem -LiteralPath $drv.Root -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match 'Delta|三角洲|WeGame|Tencent|腾讯|Games?$' } |
+                ForEach-Object { [void]$roots.Add($_.FullName) }
+        }
     }
 
-    # 下载引擎专用目录（tinydl / TenioDL）里的任何 exe 也一并拦住，
-    # 这样游戏换版本、把进程改名放进去都不会漏
+    $script:DetectedRoots = @($roots | Where-Object { Test-Path -LiteralPath $_ } | Sort-Object -Unique)
+
+    # 在定位到的目录里找：①按文件名前缀 ②引擎专用目录里的任何 exe
     $engineDirs = @('tinydl', 'TenioDL')
     foreach ($root in $script:DetectedRoots) {
-        if (-not (Test-Path -LiteralPath $root)) { continue }
-        Get-ChildItem -LiteralPath $root -Recurse -Depth 8 -Directory -ErrorAction SilentlyContinue |
+        Get-ChildItem -LiteralPath $root -Recurse -Depth 6 -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -eq '.exe' -and $_.Name -match $DownloaderPattern } |
+            ForEach-Object { & $add $_.FullName }
+
+        Get-ChildItem -LiteralPath $root -Recurse -Depth 6 -Directory -ErrorAction SilentlyContinue |
             Where-Object { $engineDirs -contains $_.Name } |
             ForEach-Object {
                 Get-ChildItem -LiteralPath $_.FullName -File -Filter '*.exe' -ErrorAction SilentlyContinue |
@@ -131,7 +147,7 @@ function Get-DownloaderPaths {
             }
     }
 
-    # 4) 兜底：上面都没找到时，全盘按文件名找（会慢一些，仅首次有必要）
+    # ---- 兜底：全盘按文件名找（很慢，只有前面都没命中才会走这里）----
     if ($found.Count -eq 0) {
         foreach ($drv in $drives) {
             Get-ChildItem -LiteralPath $drv.Root -Recurse -Depth 5 -File -ErrorAction SilentlyContinue |
@@ -345,7 +361,91 @@ function Show-Menu {
     }
 }
 
+# ---------------------------------------------------------------- 控制台字体
+
+function Set-ConsoleCjkFont {
+    # 老式控制台（conhost，也就是双击 bat 时弹出来的那个蓝底窗口）默认字体是
+    # Lucida Console，没有中文字形：conhost 会把每个汉字当 1 格来排版，而实际
+    # 画出来的字形有 2 格宽，于是字和字就叠在一起（"叠字"）。
+    # 换成带 GB 字符集的等宽字体（新宋体/NSimSun）后，conhost 才知道汉字占 2 格。
+    # Windows Terminal 自己按字形算宽度，不受影响，所以那里直接跳过。
+    if ($env:WT_SESSION) { return }
+    if ($Host.Name -ne 'ConsoleHost') { return }
+    if ($env:DF_MAPDL_NOFONT) { return }
+
+    $csharp = @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class DshConsoleFont
+{
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct COORD { public short X; public short Y; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct CONSOLE_FONT_INFOEX
+    {
+        public uint cbSize;
+        public uint nFont;
+        public COORD dwFontSize;
+        public int FontFamily;
+        public int FontWeight;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string FaceName;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern IntPtr GetStdHandle(int nStdHandle);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern bool GetCurrentConsoleFontEx(IntPtr hOut, bool bMax, ref CONSOLE_FONT_INFOEX info);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern bool SetCurrentConsoleFontEx(IntPtr hOut, bool bMax, ref CONSOLE_FONT_INFOEX info);
+
+    public static string CurrentFace()
+    {
+        IntPtr h = GetStdHandle(-11);
+        var info = new CONSOLE_FONT_INFOEX();
+        info.cbSize = (uint)Marshal.SizeOf(typeof(CONSOLE_FONT_INFOEX));
+        if (!GetCurrentConsoleFontEx(h, false, ref info)) return null;
+        return info.FaceName;
+    }
+
+    public static bool SetFace(string face, short height)
+    {
+        IntPtr h = GetStdHandle(-11);
+        var info = new CONSOLE_FONT_INFOEX();
+        info.cbSize = (uint)Marshal.SizeOf(typeof(CONSOLE_FONT_INFOEX));
+        if (!GetCurrentConsoleFontEx(h, false, ref info)) return false;
+        info.FaceName = face;
+        info.dwFontSize.X = 0;          // 0 = 由字体高度自动算宽度
+        info.dwFontSize.Y = height;
+        info.FontFamily = 54;           // TMPF_FIXED_PITCH | TMPF_TRUETYPE
+        info.FontWeight = 400;
+        return SetCurrentConsoleFontEx(h, false, ref info);
+    }
+}
+'@
+
+    try { Add-Type -TypeDefinition $csharp -ErrorAction Stop } catch { return }
+
+    try {
+        $face = [DshConsoleFont]::CurrentFace()
+        if ($face -and ($face -match 'SimSun|NSimSun|Gothic|MingLiU|Ming|YaHei|KaiTi|宋|雅黑|黑体')) { return }
+
+        foreach ($candidate in @('NSimSun', 'SimSun', 'MS Gothic')) {
+            if ([DshConsoleFont]::SetFace($candidate, 18)) {
+                Clear-Host
+                return
+            }
+        }
+    } catch { }
+}
+
 # ---------------------------------------------------------------- 入口
+
+Set-ConsoleCjkFont
 
 switch ($Mode) {
     'menu'   { Show-Menu }

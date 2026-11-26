@@ -29,7 +29,7 @@ A single-file portable `.bat` that blocks Delta Force (国服/腾讯启动器版
 
 ## 快速开始
 
-1. 到 [Releases](../../releases) 下载 `delta-force-map-download-switch-2.0.1.bat`（**单文件，就是全部**）；
+1. 到 [Releases](../../releases) 下载 `delta-force-map-download-switch-2.0.2.bat`（**单文件，就是全部**）；
 2. 双击它 → 只弹一次 UAC，点「是」（建防火墙规则必须要管理员权限）；
 3. 菜单选 `1` 禁止下载，选 `3` 看状态，选 `2` 恢复。
 
@@ -124,6 +124,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "源码\重新生成-单文�
 
 **公司/学校电脑提示拿不到管理员权限？**
 组策略可能禁止修改防火墙，那种环境只能手动在防火墙里操作。
+
+**老式控制台里中文挤在一起 / 叠字？**
+蓝底那个窗口是 conhost，默认字体（Lucida Console / Terminal）没有汉字宽度信息，会把汉字按 1 格排版、字和字挤在一起。脚本启动时会自动把字体换成「新宋体」(NSimSun)，一般就好了。还不行就右键标题栏 → 属性 → 字体 → 选「新宋体」，大小为 12～16。Windows Terminal 里运行没有这个问题。
 
 **只测过什么环境？**
 Windows 11 26xxx + Windows PowerShell 5.1 + 国服（腾讯启动器版）客户端。Windows 10 理论上一致（用的都是 `New-NetFirewallRule` / `Get-NetFirewallRule`）。Steam 版另有官方地图 DLC 分包机制，与本脚本针对的布局不同。
